@@ -1,0 +1,7 @@
+sbox
+(
+  id = "doc"
+  title = "This is the title"
+  lang = "en"
+  charset = "UTF-8"
+)

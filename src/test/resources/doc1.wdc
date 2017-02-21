@@ -1,0 +1,22 @@
+hbox
+(
+  id = "doc"
+  title = "This is the title"
+  lang =  "en"
+  charset = "UTF-8"
+
+  vbox(id="left")
+  (
+    text "This is some left text"
+    img(src="http://website.com/image.png" width=100 height=100)
+  )
+  vbox(id="middle")
+  (
+    text "This is some middle text"
+  )
+  vbox(id="right")
+  (
+    text "This is some right text"
+    img(src="http://website.com/rightimage.png" width=100 height=100)
+  )
+)
