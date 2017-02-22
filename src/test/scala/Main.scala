@@ -7,6 +7,8 @@ import javafx.scene.control.{Button}
 import javafx.scene.layout.{StackPane}
 import javafx.beans.{Observable, InvalidationListener}
 import javafx.beans.value.{ChangeListener, ObservableValue}
+import java.io.{InputStream}
+import webdoc.{Parser}
 
 
 /**
@@ -16,8 +18,13 @@ object Main
 {
   def main(args:Array[String])
   {
+    // Tests parser
+    val parser = Parser()
+    val in:InputStream = getClass.getResourceAsStream("doc1.wdc")
+    parser.parse(in)
+    
+    // Tests UI
     Application.launch(classOf[App], args:_*)
-
   }
 }
 
