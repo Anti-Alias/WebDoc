@@ -1,7 +1,7 @@
-sbox
-(
-  id = "doc"
-  title = "This is the title"
-  lang = "en"
-  charset = "UTF-8"
-)
+rbox(title="Document 2" lang="en" charset="UTF-8")
+[
+    img(src="/images/cat.png" area=[0 0 50 50])     # Image #
+    img(src="/images/cat.png" area=[50 50 50 50])   # Image #
+    hbox(color="BLACK" area=[50 0 50 50])           # Black box #
+    hbox(color="BLACK" area=[0 50 50 50])           # Black box #
+]

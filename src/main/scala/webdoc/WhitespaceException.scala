@@ -5,4 +5,4 @@ package webdoc
  * @param line Line it was found on.
  * @param column Column it was found on.
  */
-class WhitespaceException(line:Int, column:Int) extends RuntimeException("Unexpected whitespace: (" + line + ", " + column + ")")
+class WhitespaceException(line:Int, column:Int) extends ParserException("Unexpected whitespace: (" + line + ", " + column + ")")
