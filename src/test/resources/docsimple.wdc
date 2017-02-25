@@ -1,0 +1,8 @@
+hbox(dog="cat" bird="plane" superman="bird" chirp="bird")
+[
+	hbox(width=100 height=100 numbers=[1 2 3])
+	[
+		"Some text"
+		"Some more text"
+	]
+]

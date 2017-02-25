@@ -8,7 +8,8 @@ import javafx.scene.layout.{StackPane}
 import javafx.beans.{Observable, InvalidationListener}
 import javafx.beans.value.{ChangeListener, ObservableValue}
 import java.io.{InputStream}
-import webdoc.{Parser}
+import webdoc.{Lexer, Element}
+
 
 
 /**
@@ -19,9 +20,10 @@ object Main
   def main(args:Array[String])
   {
     // Tests parser
-    val parser = Parser()
-    val in:InputStream = getClass.getResourceAsStream("doc1.wdc")
-    parser.parse(in)
+    val in:InputStream = getClass.getResourceAsStream("docsimple.wdc")
+    val lexer = new Lexer(in)
+    val element:Element = lexer.parse()
+    println(element)
     
     // Tests UI
     Application.launch(classOf[App], args:_*)

@@ -1,5 +1,6 @@
 package webdoc
 import java.io.{InputStream, EOFException}
+import scala.collection.immutable.{ListMap}
 
 /**
 * Object that tokenizes webdoc input
@@ -11,50 +12,72 @@ case class Lexer(in:InputStream)
 
     // Constants
     private val escapeChar = '\\'
-    private val whitespaces: Array[Char] = Array(' ', '\t')
+    private val whitespaces: Array[Char] = Array(' ', '\t', '\n')
 
     // State
     private var pos: Int = 0    // Current character index.
-
-    // Lambdas
-    private val alphaNumCheck:Char=>Boolean  c => isAlphaNum(c)
-    private val whitespaceCheck:Char=>Boolean = c => isWhitespace(c)
 
     // Types
     private type Assignment = (String, Any)
 
 
-    // ---------- Token reading methods -----------------
+    // ---------- Token reading methods ----------------
+    
 
     /**
     * Reads next byte as a character.
     */
-    def readChar:Char =
+    private def readChar:Char =
     {
         // Checks index
-        if(index >= text.length)
+        if(pos >= text.length)
             throw ParserException("Reached end of file.")
 
         // Reads character
-        val c = text.charAt(index)
-        index += 1
+        val c = text.charAt(pos)
+        pos += 1
 
         // Returns.
         c
     }
-
+    
+    /**
+     * Reads next byte as a character without advancing
+     * internal pointer.
+     */
+    private def peekChar:Char =
+    {
+      // Checks index
+      if(pos >= text.length)
+        throw ParserException("Reached end of file.")
+      
+      // Reads character
+      text.charAt(pos)
+    }
+    
+    private def atEOF:Boolean = pos == text.length
+    
     /**
     * Skips text past whitespace
+    * @return true if reached end of file.
     */
-    def skipWhitespace()
+    private def skipWhitespace():Boolean =
     {
-        // Advances until past whitespace
-        var c = readChar
-        while(isWhitespace(c))
-            c = readChar
-
-        // Returns to previous position
-        index -= 1
+      // Advances until past whitespace
+      if(atEOF) true
+      else
+      {
+        val c = readChar
+        if(!c.isWhitespace)
+        {
+          pos -= 1
+          false
+        }
+        else
+        {
+          skipWhitespace()
+        }
+      }
     }
 
     /**
@@ -88,7 +111,7 @@ case class Lexer(in:InputStream)
     * determines if character is alpha-numeric
     */
     private def isAlphaNum(c:Int):Boolean =
-        isAlpha(c) && isNum(c)
+        isAlpha(c) || isNum(c)
 
     /**
     * Determines if C is the start of a Block.
@@ -104,7 +127,7 @@ case class Lexer(in:InputStream)
     private def isEscaped(cseq:CharSequence, index:Int):Boolean = index match
     {
         case 0 => false
-        case _ => cseq(index-1) == '\\' && !isEscaped(cseq, index-1)
+        case _ => cseq.charAt(index-1) == '\\' && !isEscaped(cseq, index-1)
     }
 
     /**
@@ -134,6 +157,41 @@ case class Lexer(in:InputStream)
         // Returns result
         builder.toString
     }
+    
+    /**
+     * Reads a number as a Double.
+     */
+    private def readNum():Double =
+    {
+      // Prepares
+      val builder = new StringBuilder()
+      var c = peekChar
+      
+      // Buffers characters
+      while(!isWhitespace(c) && c != ')' && c != ']')
+      {
+        // Checks that character is numeric
+        if(!isNum(c) && c != '.')
+          throwUnexpected
+        
+        // Continues to read
+        pos += 1
+        builder.append(c)
+        c = peekChar
+      }
+      
+      // Parses and returns result
+      val str = builder.toString
+      try
+      {
+        str.toDouble
+      }
+      catch
+      {
+        case t:Throwable => throw ParserException("Could not parse decimal number")
+      }
+      
+    }
 
     /**
     * Reads into a String until a whitespace character is hit.
@@ -142,18 +200,17 @@ case class Lexer(in:InputStream)
     {
         // Allocates and reads first
         val builder = new StringBuilder()
-        var c = readChar
+        var c:Char = peekChar
+        if(!isAlpha(c))
+          throwUnexpected
 
         // Continues reading until whitespace character is reached
-        while(!isWhitespace(c))
+        while(isAlphaNum(c))
         {
-            // Checks if character is valid
-            if(!isAlphaNum(c))
-                throwUnexpected
-
             // Adds to buffer
+            pos += 1
             builder.append(c)
-            c = readChar
+            c = peekChar
         }
 
         // Returns contents of buffer
@@ -164,32 +221,62 @@ case class Lexer(in:InputStream)
     /**
     * Possibly reads element
     */
-    private def readStart():Option[Element] =
+    def parse():Element =
     {
-        // Loads contents of InputStream into a String
+        // Buffers contents of InputStream into a String
         text =
         {
             val builder = new StringBuilder
             var b:Int = in.read
             while(b != -1)
+            {
                 builder.append(b.toChar)
+                b = in.read
+            }
+            builder.append('\n')
             builder.toString
         }
-
-        // Reads layout element
-        readElement()
+        
+        // Reads Element
+        readElement
+    }
+    
+    
+    /**
+     * Current location in the file (line/column)
+     */
+    private def currentLocation:(Int, Int) =
+    {
+      var i = 0
+      var line = 1
+      var column = 1
+      while(i < pos)
+      {
+        var c = text.charAt(i)
+        if(c == '\n')
+        {
+          line += 1
+          column = 0
+        }
+        column += 1
+        
+        i += 1
+      }
+      
+      // Returns result
+      (line, column)
     }
 
     // Stub
-    def currentLine = 0
+    private def currentLine = currentLocation._1
 
     // Stub
-    def currentColumn = 0
+    private def currentColumn = currentLocation._2
 
     /**
     * Reads an assignment to an element.
     */
-    private def readAssignment():(String, Option[Element]) =
+    private def readAssignment():Assignment =
     {
         // Skips whitespace
         skipWhitespace()
@@ -213,7 +300,7 @@ case class Lexer(in:InputStream)
     {
         // Skips whitespace and reads character
         skipWhitespace()
-        var c = readChar
+        var c = peekChar
 
         // Handles content
         if(isAlpha(c))
@@ -223,22 +310,110 @@ case class Lexer(in:InputStream)
 
             // Expected equals symbol
             skipWhitespace()
-            val nextC = readChar
+            val nextC:Char = peekChar
             if(nextC != '=')
                 throwUnexpected()
+            pos += 1
 
             // Value
             val value:Any = readValue
+            val assignment:Assignment = (key, value)
 
             // Returns recursive result
-            readAssignments(assignments +: assignment)
+            val result = readAssignments(assignments :+ assignment)
+            result
         }
+        
+        // End of assignments
         else if(c == ')')
+        {
+          // Advances
+          pos += 1
+          
+          // Attempts to read following array
+          val eof:Boolean = skipWhitespace()
+          if(!eof && peekChar == '[')
+          {
+            pos += 1
+            val children:Seq[Any] = readSequence()
+            assignments :+ ("children", children)
+          }
+          else
+          {
             assignments
+          }
+        }
+        
+        // Unexpected
         else
-            throwUnexpected
+        {
+          throwUnexpected
+          Seq.empty
+        }
     }
+    
+    /**
+     * Reads a sequence of certain values
+     * @param seq Sequence accumulated. Empty by default.
+     * @return Sequence of elements.
+     */
+    private def readSequence(seq:Seq[Any] = Seq.empty):Seq[Any] =
+    {
+      // Skips whitespace
+      skipWhitespace()
+ 
+      // Peeks at character
+      val c:Char = peekChar
+      c match
+      {
+        case ']' =>
+          pos += 1
+          seq.toArray.toSeq
+        case _ =>
+          val value:Any = readValue()
+          readSequence(seq :+ value)
+      }
+    }
+    
+    /**
+     * Reads next content as an Element
+     */
+    private def readElement():Element =
+    {
+      // Skips whitespace just in case
+      skipWhitespace()
+      
+      // Buffers in name of element
+      val builder = new StringBuilder()
+      var c:Char = peekChar
+      if(!isAlpha(c))
+        throwUnexpected
+              
+      // Reads the rest
+      while(isAlphaNum(c))
+      {
+        pos += 1
+        builder.append(c)
+        c = peekChar
+      }
+            
+      // Skips whitespace
+      skipWhitespace()
+            
+      // Checks if next character is valid
+      c = peekChar
+      if(c != '(')
+        throwUnexpected
+      pos += 1
 
+      // Stores name and reads assignments
+      val name = builder.toString
+      val assignments:Seq[Assignment] = readAssignments()
+      val meta:Map[String, Any] = ListMap(assignments:_*)
+            
+      // Returns an Element from these two entries
+      Element(name, meta)
+    }
 
     /**
     * Reads some element
@@ -249,12 +424,32 @@ case class Lexer(in:InputStream)
         skipWhitespace()
 
         // Reads next character, and uses it to get the correct value type
-        val c:Char = readChar
+        val c:Char = peekChar
         val value:Any =
         {
-            if(c == '"')        readQuotedString
-            else if(c == '(')   readAssignments
-            else if(c == '[')   readValues
+            if(c == '"')
+            {
+              pos += 1
+              readQuotedString()
+            }
+            else if(c == '(')
+            {
+              pos += 1
+              readAssignments()
+            }
+            else if(c == '[')
+            {
+              pos += 1
+              readSequence()
+            }
+            else if(isAlpha(c))
+            {
+              readElement()
+            }
+            else if(isNum(c))
+            {
+              readNum()
+            }
             else
             {
                 throwUnexpected
@@ -266,13 +461,11 @@ case class Lexer(in:InputStream)
         value
     }
 
-
     /**
     * Throws an unexpected character exception for the previous character
     */
     private def throwUnexpected()
     {
-        pos -= 1
-        throw UnexpectedCharacterException(c, currentLine, currentColumn)
+        throw UnexpectedCharacterException(text(pos), currentLocation)
     }
 }

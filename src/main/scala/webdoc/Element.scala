@@ -1,5 +1,4 @@
 package webdoc
-import scala.collection.immutable.{Seq, Map}
 
 
 /**
@@ -10,29 +9,68 @@ import scala.collection.immutable.{Seq, Map}
  */
 case class Element(name:String, meta:Map[String, Any])
 {
-    override def toString:String =
+  /**
+   * toString helper method
+   */
+  private def toString(a:Any):String = a match
+  {
+    case d:Double =>
+      val i:Int = d.toInt
+      if(i == d) i.toString
+      else d.toString
+    case str:String => "\"" + a + "\""
+    case seq:Seq[_] =>
+      val builder = new StringBuilder()
+      builder.append('[')
+      for(i <- 0 until seq.length)
+      {
+        val elem:Any = seq(i)
+        builder.append(toString(elem))
+        if(i != seq.length-1)
+          builder.append(' ')
+      }
+      builder.append(']')
+      builder.toString
+    case a:Any => a.toString
+  }
+  
+  /**
+   * Acquires metadata from Element.
+   */
+  def apply(key:String):Any = meta.apply(key)
+  
+  /**
+   * String representation of this Element.
+   */
+  override def toString:String =
+  {
+    // Creates builder
+    var builder = new StringBuilder()
+
+    // Header
+    builder.append(name)
+    builder.append('(')
+
+    // Meta
+    val entries:Seq[(String, Any)] = meta.toSeq
+    for(i <- 0 until entries.length)
     {
-        // Creates builder
-        var builder = new StringBuilder()
-
-        // Header
-        builder.append(name)
-        builder.append('(')
-
-        // Meta
-        for(entry <- meta)
-        {
-            builder
-                .append(entry._1)
-                .append(" = ")
-                .append(entry._2.toString)
-                .append(' ')
-        }
-
-        // Footer
-        builder.append(')')
-
-        // Returns result
-        builder.toString
+      // Appends entry as a String
+      val entry:(String, Any) = entries(i)
+      builder
+        .append(entry._1)
+        .append('=')
+        .append(toString(entry._2))
+      
+      // Prints space if not at last element
+      if(i != entries.length-1)
+        builder.append(' ')
     }
+
+    // Footer
+    builder.append(')')
+
+    // Returns result
+    builder.toString
+  }
 }
