@@ -19,6 +19,7 @@ case class Lexer(in:InputStream)
 
     // Types
     private type Assignment = (String, Any)
+    private type Attempt = ()=>Any
 
 
     // ---------- Token reading methods ----------------
@@ -31,7 +32,7 @@ case class Lexer(in:InputStream)
     {
         // Checks index
         if(pos >= text.length)
-            throw ParserException("Reached end of file.")
+            throw ParserException("Reached end of file.", currentLocation)
 
         // Reads character
         val c = text.charAt(pos)
@@ -49,7 +50,7 @@ case class Lexer(in:InputStream)
     {
       // Checks index
       if(pos >= text.length)
-        throw ParserException("Reached end of file.")
+        throw ParserException("Reached end of file.", currentLocation)
       
       // Reads character
       text.charAt(pos)
@@ -158,6 +159,37 @@ case class Lexer(in:InputStream)
         builder.toString
     }
     
+    
+    
+    /**
+     * Attempts to run all functions in the sequence.
+     * Stops at first one that succeeds, and returns result.
+     * @throws Exception if the last function fails.
+     */
+    private def attemptAll(attempts:Seq[Attempt], index:Int=0):Any =
+    {
+      val fun:()=>Any = attempts(index)
+      if(index == attempts.length-1)
+        fun()
+      else
+      {
+        // Tries to invoke current attempt
+        val savePos:Int = pos
+        try
+        {
+          fun()
+        }
+        
+        // Recovers and tries the next
+        catch
+        {
+          case t:Throwable =>
+            pos = savePos
+            attemptAll(attempts, index+1)
+        }
+      }
+    }
+    
     /**
      * Reads a number as a Double.
      */
@@ -188,9 +220,25 @@ case class Lexer(in:InputStream)
       }
       catch
       {
-        case t:Throwable => throw ParserException("Could not parse decimal number")
+        case t:Throwable => throw ParserException("Could not parse decimal number", currentLocation)
       }
-      
+    }
+    
+    
+    /**
+     * Reads a value as a Boolean.
+     */
+    private def readBool():Boolean =
+    {
+      val str:String = readAlphaNumString
+      try
+      {
+        str.toBoolean
+      }
+      catch
+      {
+        case t:Throwable => throw ParserException("Could not parse bool", currentLocation)
+      }
     }
 
     /**
@@ -383,22 +431,27 @@ case class Lexer(in:InputStream)
       // Skips whitespace just in case
       skipWhitespace()
       
-      // Buffers in name of element
+      // Tries to buffer in name header
       val builder = new StringBuilder()
       var c:Char = peekChar
-      if(!isAlpha(c))
-        throwUnexpected
-              
-      // Reads the rest
-      while(isAlphaNum(c))
+      
+      // Only looks for name at start if first character is not the beginning of the object.
+      if(c != '(')
       {
-        pos += 1
-        builder.append(c)
-        c = peekChar
+        if(!isAlpha(c))
+          throwUnexpected
+                
+        // Reads the rest
+        while(isAlphaNum(c))
+        {
+          pos += 1
+          builder.append(c)
+          c = peekChar
+        }
+        
+        // Skips whitespace
+        skipWhitespace()
       }
-            
-      // Skips whitespace
-      skipWhitespace()
             
       // Checks if next character is valid
       c = peekChar
@@ -407,12 +460,17 @@ case class Lexer(in:InputStream)
       pos += 1
 
       // Stores name and reads assignments
-      val name = builder.toString
       val assignments:Seq[Assignment] = readAssignments()
       val meta:Map[String, Any] = ListMap(assignments:_*)
-            
-      // Returns an Element from these two entries
-      Element(name, meta)
+      val name:Any = meta.get("name") match
+      {
+        case Some(a:Any) => a
+        case None => builder.toString
+      }
+      
+      // Builds RawElement
+      val start:Map[String, Any] = ListMap(("name", name))
+      RawElement(start ++ meta)
     }
 
     /**
@@ -420,37 +478,40 @@ case class Lexer(in:InputStream)
     */
     private def readValue():Any =
     {
-        // Skips whitespace
+        // Skips whitespace and peeks at the next character
         skipWhitespace()
-
-        // Reads next character, and uses it to get the correct value type
         val c:Char = peekChar
+        
+        // Uses it to evaluate following text
         val value:Any =
         {
-            if(c == '"')
+            if(c == '"')        // Start of a String
             {
               pos += 1
               readQuotedString()
             }
-            else if(c == '(')
+            else if(c == '(')  // Start of a list of assignments
             {
               pos += 1
               readAssignments()
             }
-            else if(c == '[')
+            else if(c == '[')  // Start of an array
             {
               pos += 1
               readSequence()
             }
-            else if(isAlpha(c))
+            else if(isAlpha(c))  // Start of a a boolean or an element
             {
-              readElement()
+              attemptAll(Seq(
+                  () => readBool(),
+                  () => readElement()
+              ))
             }
-            else if(isNum(c))
+            else if(isNum(c))  // Start of a number
             {
               readNum()
             }
-            else
+            else              // Unexpected
             {
                 throwUnexpected
                 "Unreachable"
